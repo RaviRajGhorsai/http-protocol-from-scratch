@@ -5,6 +5,7 @@ import (
 	"fmt"
 	headers "htttpfromtcp/internal/header"
 	"io"
+	"strconv"
 )
 
 type parserState string
@@ -13,6 +14,7 @@ const (
 	StateInit    parserState = "init"
 	StateDone    parserState = "done"
 	StateHeaders parserState = "headers"
+	StateBody    parserState = "body"
 )
 
 type RequestLine struct {
@@ -25,6 +27,7 @@ type Request struct {
 	RequestLine RequestLine
 	Headers     *headers.Headers
 	state       parserState
+	Body        string
 }
 
 var ERROR_BAD_START_LINE = fmt.Errorf("bad start line")
@@ -33,8 +36,9 @@ var SEPARATOR = []byte("\r\n")
 func newRequest() *Request {
 
 	return &Request{
-		state: StateInit,
+		state:   StateInit,
 		Headers: headers.NewHeaders(),
+		Body:    "",
 	}
 
 }
@@ -110,7 +114,6 @@ outer:
 	for {
 		currentData := data[read:]
 
-
 		switch r.state {
 		case StateInit:
 
@@ -142,13 +145,40 @@ outer:
 			if n == 0 {
 				break outer
 			}
-				
+
 			read += n
 
 			if done {
 
+				r.state = StateBody
+			}
+		case StateBody:
+			ContentLengthStr := r.Headers.Get("content-length")
+
+			if ContentLengthStr == "" {
+
 				r.state = StateDone
 			}
+			ContentLength, err := strconv.Atoi(ContentLengthStr)
+			if err != nil {
+
+				return 0, nil
+			}
+
+			
+
+			remaining := min(ContentLength-len(r.Body), len(currentData))
+			r.Body += string(currentData[:remaining])
+
+			read += remaining
+
+			if len(r.Body) == ContentLength {
+				r.state = StateDone
+
+			} else {
+				break outer
+			}  
+
 
 		case StateDone:
 			break outer

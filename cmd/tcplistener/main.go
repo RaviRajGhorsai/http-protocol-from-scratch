@@ -54,6 +54,9 @@ func main() {
 
 		})
 
+		fmt.Println("Body:")
+		fmt.Printf("%s", r.Body)
+
 	}
 
 }
