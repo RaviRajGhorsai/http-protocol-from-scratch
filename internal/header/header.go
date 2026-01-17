@@ -27,6 +27,14 @@ func (h *Headers) Get(name string) string {
 
 }
 
+func (h *Headers) Replace(name, value string) {
+
+	name = strings.ToLower(name)
+
+	h.headers[name] = value
+
+}
+
 func (h *Headers) Set(name, value string) {
 
 	name = strings.ToLower(name)
@@ -40,7 +48,6 @@ func (h *Headers) Set(name, value string) {
 	}
 
 }
-
 
 // This function iterates over all the headers in the Headers map and calls a callback function for each header name-value pair.
 func (h *Headers) ForEach(cb func(n, v string)) {

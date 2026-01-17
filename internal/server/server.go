@@ -1,12 +1,24 @@
 package server
 
-import "net"
+import (
+	"fmt"
+	"htttpfromtcp/internal/request"
+	"htttpfromtcp/internal/response"
+	"io"
+	"net"
+)
 
-type Server struct{
-	
-	closed bool
-
+type Server struct {
+	closed  bool
+	handler Handler
 }
+
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Message    string
+}
+
+type Handler func(w *response.Writer, req *request.Request) 
 
 func (s *Server) Close() error {
 
@@ -14,46 +26,60 @@ func (s *Server) Close() error {
 	return nil
 }
 
+// accepts the connection and responds to the request received
+func runConnection(s *Server, conn io.ReadWriteCloser) {
 
+	defer conn.Close()
 
-func listenConnection(s *Server, conn io.ReadCloser) {
+	responseWriter := response.NewWriter(conn)
 
-	
-}
+	r, err := request.RequestFromReader(conn)
+
+	if err != nil {
+
+		headers := response.GetDefaultHeaders(0)
+		responseWriter.WriteStatusLine(response.StatusBadRequest)
+
+		responseWriter.WriteHeaders(headers)
+
+		return
+	}
+
+	s.handler(responseWriter, r)
+
+	}
 
 func runServer(s *Server, listener net.Listener) {
-	
-	
+
 	for {
 
 		conn, err := listener.Accept()
-		
+
 		if s.closed {
-			return 
+			return
 		}
 
 		if err != nil {
-			return 
+			return
 		}
 
-		go listenConnection(s, conn)
-	
+		go runConnection(s, conn)
+
 	}
-	
+
 }
 
-func Serve(port uint16) (*Server, error) {
-	
+func Serve(port uint16, handler Handler) (*Server, error) {
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port)
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
 	server := &Server{
-		closed : false
-
+		closed:  false,
+		handler: handler,
 	}
-	
+
 	go runServer(server, listener)
 
 	return server, nil
