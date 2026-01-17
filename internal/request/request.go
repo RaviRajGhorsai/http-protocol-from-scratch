@@ -3,14 +3,16 @@ package request
 import (
 	"bytes"
 	"fmt"
+	headers "htttpfromtcp/internal/header"
 	"io"
 )
 
 type parserState string
 
 const (
-	StateInit parserState = "init"
-	StateDone parserState = "done"
+	StateInit    parserState = "init"
+	StateDone    parserState = "done"
+	StateHeaders parserState = "headers"
 )
 
 type RequestLine struct {
@@ -21,6 +23,7 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     *headers.Headers
 	state       parserState
 }
 
@@ -31,6 +34,7 @@ func newRequest() *Request {
 
 	return &Request{
 		state: StateInit,
+		Headers: headers.NewHeaders(),
 	}
 
 }
@@ -104,11 +108,14 @@ func (r *Request) parse(data []byte) (int, error) {
 	read := 0
 outer:
 	for {
+		currentData := data[read:]
+
+
 		switch r.state {
 		case StateInit:
 
 			// we parse the mesasge that we got and return as requestLine, no. of byte read
-			requestLine, n, err := parseRequestLine(data[read:])
+			requestLine, n, err := parseRequestLine(currentData)
 			if err != nil {
 				return 0, err
 			}
@@ -116,18 +123,35 @@ outer:
 			if n == 0 {
 				break outer
 			}
-			
+
 			// we save the successfully read line
 			r.RequestLine = *requestLine
-			
+
 			// then increase read buffer/size
 			read += n
-			
-			r.state = StateDone
+
+			r.state = StateHeaders
+
+		case StateHeaders:
+
+			n, done, err := r.Headers.Parse(currentData)
+			if err != nil {
+				return 0, err
+			}
+
+			if n == 0 {
+				break outer
+			}
+				
+			read += n
+
+			if done {
+
+				r.state = StateDone
+			}
 
 		case StateDone:
 			break outer
-
 		}
 	}
 	return read, nil
@@ -141,13 +165,13 @@ func (r *Request) done() bool {
 func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	request := newRequest()
-	
+
 	// initialize msg byte length as 0
 	buf := make([]byte, 1024)
 	bufLen := 0
 
 	for !request.done() {
-		
+
 		// n == total byte size of message
 		n, err := reader.Read(buf[bufLen:])
 		if err != nil {
@@ -158,7 +182,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		// set buffer length as total message length
 		bufLen += n
-		
+
 		// eandN is the no. of bytes read by parser
 		readN, err := request.parse(buf[:bufLen])
 		if err != nil {
