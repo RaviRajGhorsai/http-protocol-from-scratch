@@ -37,8 +37,6 @@ func GetDefaultHeaders(contentLen int) *headers.Headers {
 	return h
 }
 
-
-
 // writes status line to the response
 func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 	switch statusCode {
@@ -59,7 +57,6 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 
 }
 
-
 // writes headers to the response
 func (w *Writer) WriteHeaders(h *headers.Headers) error {
 	b := []byte{}
@@ -74,6 +71,40 @@ func (w *Writer) WriteHeaders(h *headers.Headers) error {
 
 	return err
 
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+
+	b := []byte{}
+
+	b = fmt.Appendf(b, fmt.Sprintf("%x\r\n", len(p)))
+	b = fmt.Appendf(b, fmt.Sprintf("%s\r\n", p))
+
+	n, err := w.writer.Write(b)
+
+	return n, err
+
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+
+	n, err := w.writer.Write([]byte("0\r\n\r\n"))
+
+	return n, err
+}
+
+func (w *Writer) WriteTrailers(h *headers.Headers) error {
+	b := []byte{}
+
+	h.ForEach(func(n, v string) {
+
+		b = fmt.Appendf(b, "%s: %s\r\n", n, v)
+	})
+
+	b = fmt.Append(b, "\r\n")
+	_, err := w.writer.Write(b)
+
+	return err
 }
 
 func (w *Writer) WriteBody(p []byte) (int, error) {

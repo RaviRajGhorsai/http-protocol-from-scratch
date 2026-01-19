@@ -68,6 +68,28 @@ func toStr(bytes []byte) string {
 
 }
 
+func logging(req *request.Request, h *headers.Headers) {
+
+	fmt.Printf("Request line:\n")
+	fmt.Printf("- Method: %s\n", req.RequestLine.Method)
+	fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
+	fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
+
+	fmt.Println("Headers:")
+	req.Headers.ForEach(func(n, v string) {
+
+		fmt.Printf("- %s: %s\n", n, v)
+
+	})
+
+	fmt.Println("Body: ")
+	fmt.Printf("%s", req.Body)
+
+	fmt.Printf("\nTrailers: ")
+	fmt.Printf("%s", h.Get("trailer"))
+
+}
+
 func main() {
 	s, err := server.Serve(port, func(w *response.Writer, req *request.Request) {
 
@@ -90,6 +112,7 @@ func main() {
 
 			videoData, err := os.ReadFile("assets/vim.mp4")
 			if err != nil {
+				log.Printf("Error: %v\n", err)
 				return
 			}
 
@@ -100,7 +123,6 @@ func main() {
 			w.WriteHeaders(h)
 			w.WriteBody(videoData)
 
-
 			// Chunked Encoding,  using httpbin that sends chunked data
 		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
 
@@ -108,11 +130,12 @@ func main() {
 			res, err := http.Get("https://httpbin.org/" + target[len("/httpbin/"):])
 
 			if err != nil {
-				fmt.Printf("Error: %v\n", err)
+				log.Printf("Error 1: %v\n", err)
 				body = respond400()
 				status = response.StatusBadRequest
 
 			} else {
+				defer res.Body.Close()
 
 				w.WriteStatusLine(response.StatusOK)
 
@@ -131,18 +154,22 @@ func main() {
 					data := make([]byte, 32)
 					n, err := res.Body.Read(data)
 					if err != nil {
+
+						log.Printf("Error 2: %s\n", err)
 						break
 					}
 
 					fullBody = append(fullBody, data[:n]...)
 
-					w.WriteBody([]byte(fmt.Sprintf("%x\r\n", n)))
-					w.WriteBody(data[:n])
-					w.WriteBody([]byte("\r\n"))
+					_, e := w.WriteChunkedBody(data[:n])
+					if e != nil {
 
+						log.Printf("Error 3: %s\n", err)
+						break
+					}
 				}
 
-				w.WriteBody([]byte("0\r\n\r\n"))
+				w.WriteChunkedBodyDone()
 
 				trailer := headers.NewHeaders()
 
@@ -152,23 +179,11 @@ func main() {
 				trailer.Set("X-Content-Length", fmt.Sprintf("%d", len(fullBody)))
 
 				w.WriteBody([]byte("0\r\n"))
-				w.WriteHeaders(trailer)
+				w.WriteTrailers(trailer)
 
 				// Loggings only
-				fmt.Printf("Request line:\n")
-				fmt.Printf("- Method: %s\n", req.RequestLine.Method)
-				fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
-				fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
 
-				fmt.Println("Headers:")
-				req.Headers.ForEach(func(n, v string) {
-
-					fmt.Printf("- %s: %s\n", n, v)
-
-				})
-
-				fmt.Println("Body:")
-				fmt.Printf("%s", req.Body)
+				logging(req, h)
 
 				return
 			}
@@ -184,20 +199,8 @@ func main() {
 		w.WriteBody(body)
 
 		// Loggings only
-		fmt.Printf("Request line:\n")
-		fmt.Printf("- Method: %s\n", req.RequestLine.Method)
-		fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
-		fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
 
-		fmt.Println("Headers:")
-		req.Headers.ForEach(func(n, v string) {
-
-			fmt.Printf("- %s: %s\n", n, v)
-
-		})
-
-		fmt.Println("Body:")
-		fmt.Printf("%s", req.Body)
+		logging(req, h)
 
 	})
 
